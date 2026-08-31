@@ -67,28 +67,14 @@ services:
   flights:
     image: *chatmap
     restart: unless-stopped
-    command: >
-      sh -c 'while :; do
-        uv run python /app/export_flights.py --out /out/flights.geojson || true;
-        sleep ${FLIGHTS_INTERVAL:-60};
-      done'
+    command: ["/app/flights_loop.sh"]
     env_file: [.env]
     volumes:
       - ./export_flights.py:/app/export_flights.py:ro
+      - ./flights_loop.sh:/app/flights_loop.sh:ro
       - ./web:/out
     depends_on:
       chatmap-db: {condition: service_healthy}
-
-  watchdog:
-    image: busybox
-    restart: unless-stopped
-    command: >
-      sh -c 'while :; do
-        if [ -z "$$(find /out/flights.geojson -mmin -3 2>/dev/null)" ];
-          then touch /out/DOWN; else rm -f /out/DOWN; fi;
-        sleep 30;
-      done'
-    volumes: ["./web:/out"]
 
   board:
     image: caddy:2

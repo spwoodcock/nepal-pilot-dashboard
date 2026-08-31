@@ -14,6 +14,11 @@ The pilot sends one location pin with a message such as `takeoff @ 10:30 landing
 
 The 15-minute active window and 2-hour stale limit are configurable. Flight data refreshes every 60 seconds.
 
+If the feed stops, the board stays up and keeps the last known positions on the map:
+
+- **After 3 minutes** (three missed exports): an amber banner giving the time of the last update, with the map untouched.
+- **After 1 hour:** a red banner and the map greys out - too old to plan against.
+
 ## Deploy
 
 1. Point `nepal-pilots.response.hotosm.org` at the server, then copy `.env.example` to `.env` and fill it in.
@@ -31,4 +36,4 @@ docker compose run --rm -v ./seed_dummy.py:/app/seed_dummy.py:ro flights \
   uv run python /app/seed_dummy.py            # --clear to remove
 ```
 
-Expect 60 markers: 24 airborne, 14 overdue, 12 planned, 7 landed, 3 unclear. Stop `flights` for three minutes and the board must grey out and the site answer 503.
+Expect 60 markers: 24 airborne, 14 overdue, 12 planned, 7 landed, 3 unclear. Stop `flights` for three minutes and the board must raise the amber staleness banner while still showing every marker.

@@ -19,11 +19,14 @@
   .count { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums }
   .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block }
   #age { margin-left: auto; font-variant-numeric: tabular-nums; color: #9aa4b0 }
-  #alarm { position: absolute; inset: 44px 0 auto 0; padding: 14px;
-           background: #b3140a; color: #fff; font-size: 17px; font-weight: 600;
-           text-align: center; z-index: 3; display: none }
-  body.stale #alarm { display: block }
-  body.stale #map { filter: grayscale(1) brightness(.65) }
+  #banner { position: absolute; inset: 44px 0 auto 0; padding: 11px 14px;
+            color: #fff; font-size: 16px; font-weight: 600; text-align: center;
+            z-index: 3; display: none }
+  #banner .sub { display: block; margin-top: 3px; font-size: 13px;
+                 font-weight: 400; opacity: .9 }
+  body.stale #banner { display: block; background: #8a5300 }
+  body.expired #banner { display: block; background: #b3140a }
+  body.expired #map { filter: grayscale(1) brightness(.65) }
   #legend { position: absolute; left: 12px; bottom: 12px; z-index: 2;
             background: #0b0e12dd; border: 1px solid #232a33; border-radius: 6px;
             padding: 10px 12px; line-height: 1.9 }
@@ -43,7 +46,7 @@
   <span class="count"><i class="dot" style="background:var(--landed)"></i><span id="c-landed">0</span> landed</span>
   <span id="age">waiting for flight data…</span>
 </div>
-<div id="alarm">Flight data is not updating. Do not rely on this map.</div>
+<div id="banner"></div>
 <div id="map"></div>
 <div id="legend">
   <div><i class="dot" style="background:var(--airborne)"></i> currently in the air</div>
@@ -59,9 +62,15 @@ import * as maplibregl from "https://cdn.jsdelivr.net/npm/maplibre-gl@6.6.0/dist
 const FEED = "./flights.geojson";
 const POLL_MS = 15000;
 const TICK_MS = 1000;
+// The exporter runs every 60s. Warn after three missed runs, but keep showing
+// the last known positions: they stay useful long after the feed dies. Only
+// past EXPIRED_S is the map too old to plan against.
+const STALE_S = 180;
+const EXPIRED_S = 60 * 60;
 const NEPAL_MIN = 5 * 60 + 45;
 
 let map = null, mapReady = false, feed = null, lastGenerated = null, fitted = false;
+let fatal = null, bannerHtml = null, mapTop = null;
 
 const COLOUR = ["match", ["get", "status"],
   "airborne", "#e0342a", "planned", "#e08a00", "landed", "#7c848e",
@@ -102,9 +111,8 @@ try {
 }
 
 function showFatal(text) {
-  const el = document.getElementById("alarm");
-  el.textContent = text;
-  document.body.classList.add("stale");
+  fatal = text;
+  paintAge();
 }
 
 function onMapLoad() {
@@ -228,7 +236,8 @@ async function tick() {
     feed = await res.json();
     render();
 
-    lastGenerated = new Date(feed.properties.generated_at);
+    const gen = new Date(feed.properties.generated_at);
+    if (!isNaN(gen)) lastGenerated = gen;
     if (mapReady && !fitted && feed.properties.bbox) {
       const b = feed.properties.bbox;
       map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, duration: 0 });
@@ -240,16 +249,64 @@ async function tick() {
   paintAge();
 }
 
+function ago(secs) {
+  if (secs < 90) return `${secs}s ago`;
+  const m = Math.round(secs / 60);
+  return m < 90 ? `${m} min ago` : `${Math.floor(m / 60)}h ${m % 60}m ago`;
+}
+
 function paintAge() {
   const el = document.getElementById("age");
-  if (!lastGenerated) { el.textContent = "no flight data yet";
-                        document.body.classList.add("stale"); return; }
-  const secs = Math.round((Date.now() - lastGenerated) / 1000);
-  const stale = secs > 180;
-  el.textContent = (stale ? "out of date · " : "updated ") +
-    (secs < 90 ? `${secs}s ago` : `${Math.round(secs / 60)} min ago`);
-  el.style.color = stale ? "#ff8b82" : "#9aa4b0";
-  document.body.classList.toggle("stale", stale);
+  const banner = document.getElementById("banner");
+  const secs = lastGenerated ? Math.round((Date.now() - lastGenerated) / 1000) : null;
+  let level = "", html = "";
+
+  if (secs === null) {
+    el.textContent = "no flight data yet";
+    el.style.color = "#ffc27a";
+    level = "stale";
+    html = "No flight data has arrived yet." +
+           `<span class="sub">The map is empty because nothing has been ` +
+           `received - not because the sky is clear.</span>`;
+  } else {
+    const stopped = `stopped updating at ${hhmm(lastGenerated.toISOString())} ` +
+                    `(${ago(secs)})`;
+    el.textContent = (secs > STALE_S ? "not updating · last update " : "updated ") +
+                     ago(secs);
+    el.style.color = secs > STALE_S ? "#ff8b82" : "#9aa4b0";
+
+    if (secs > EXPIRED_S) {
+      level = "expired";
+      html = `Flight data ${stopped} - too old to plan against.` +
+             `<span class="sub">These are the last known positions. Do not ` +
+             `rely on this map; contact pilots directly.</span>`;
+    } else if (secs > STALE_S) {
+      level = "stale";
+      html = `Flight data ${stopped}.` +
+             `<span class="sub">Showing the last known positions. Take-off ` +
+             `and landing times are as reported, so nothing here is ` +
+             `confirmed since that update.</span>`;
+    }
+  }
+
+  if (fatal) { level = "expired"; html = fatal; }
+
+  if (html !== bannerHtml) {   // avoid re-rendering the banner every tick
+    banner.innerHTML = bannerHtml = html;
+    document.body.classList.toggle("stale", level === "stale");
+    document.body.classList.toggle("expired", level === "expired");
+  }
+  fitMapUnderBanner(banner.offsetHeight);
+}
+
+// The banner is an overlay, so push the map clear of it - otherwise it hides
+// the northernmost markers for as long as the warning is up.
+function fitMapUnderBanner(bannerPx) {
+  const top = 44 + bannerPx;
+  if (top === mapTop) return;
+  mapTop = top;
+  document.getElementById("map").style.top = top + "px";
+  if (map) map.resize();
 }
 
 // Start this here so the warning still works when the map cannot load.

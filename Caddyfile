@@ -5,14 +5,9 @@ nepal-pilots.response.hotosm.org {
 		admin {env.BOARD_PASSWORD_HASH}
 	}
 
-	@down file /DOWN
-	handle @down {
-		respond "BOARD DOWN - the drone feed is not updating. Do not rely on this map." 503
-	}
-
-	handle {
-		file_server
-		header Cache-Control "no-cache"
-		header X-Robots-Tag "noindex, nofollow"
-	}
+	# No 503 kill switch: a stale board is still worth reading, so the page
+	# itself warns and keeps showing the last known positions.
+	file_server
+	header Cache-Control "no-cache"
+	header X-Robots-Tag "noindex, nofollow"
 }
