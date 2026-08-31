@@ -41,7 +41,8 @@
   body.expired #banner { display: block; background: #b3140a }
   #legend { position: absolute; left: 12px; bottom: 12px; z-index: 2;
             background: #0b0e12dd; border: 1px solid #232a33; border-radius: 6px;
-            padding: 10px 12px; line-height: 1.9 }
+            padding: 10px 12px; line-height: 1.9;
+            max-height: calc(100vh - 68px); overflow-y: auto }
   #legend button { display: flex; align-items: center; gap: 8px; width: 100%;
                    font: inherit; color: inherit; text-align: left;
                    background: none; border: 1px solid transparent;
@@ -52,6 +53,12 @@
                   padding: 0 6px 2px }
   #clear-filter { margin-top: 4px; color: #9aa4b0; font-size: 12px;
                   border-color: #2c343e }
+  #legal { max-width: 250px; margin: 9px 6px 0; padding-top: 8px;
+           border-top: 1px solid #232a33; color: #8d98a5;
+           font-size: 12px; line-height: 1.45 }
+  #legal b { color: #c6ced7 }
+  #legal a { color: #b5bec8 }
+  #legal a:hover { color: var(--fg) }
 
   #pilots { position: absolute; top: 44px; right: 0; bottom: 0; width: 290px;
             max-width: 60vw; z-index: 2; padding: 12px 14px 18px;
@@ -118,6 +125,13 @@
   <button type="button" data-status="landed" aria-pressed="false"><i class="dot" style="background:var(--landed)"></i> recently landed</button>
   <button type="button" data-status="unparsed" aria-pressed="false"><i class="dot" style="background:var(--unparsed)"></i> report received - flight times unclear</button>
   <button type="button" id="clear-filter" hidden>show every flight again</button>
+  <p id="legal"><b>Not an aviation deconfliction tool.</b> Markers show only the flights
+    pilots have reported by WhatsApp, so an empty map does not mean empty
+    airspace. Provided “as is”, without warranty.
+    <a href="https://github.com/spwoodcock/nepal-pilot-dashboard" target="_blank"
+       rel="noopener noreferrer">Source</a> ·
+    <a href="https://github.com/spwoodcock/nepal-pilot-dashboard/blob/main/LICENSE.md"
+       target="_blank" rel="noopener noreferrer">full license</a>.</p>
 </div>
 <aside id="pilots" hidden>
   <button type="button" id="pilots-close" aria-label="Close the pilot list">close</button>

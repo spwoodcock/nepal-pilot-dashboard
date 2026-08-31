@@ -7,6 +7,19 @@ Reports are ingested by [ChatMap](https://github.com/hotosm/chatmap).
 > [!NOTE]
 > The dashboard does not need to be public. For sensitive data, host it internally and configure `Caddyfile` for internal DNS and TLS.
 
+## Disclaimer
+
+**This is not an air-traffic, deconfliction, or search-and-rescue tool.** The board
+shows only what pilots report over WhatsApp - a self-reported take-off pin and times,
+not a live track. Reports can be missed, mistyped, delayed, or never sent, so a marker
+may be wrong and an empty map does not mean empty airspace. Never use it as the sole
+basis for a flight, clearance, or rescue decision.
+
+This software is provided **“as is”, without warranty of any kind**. To the extent
+permitted by law, the copyright holders and contributors are not liable for any damages
+arising from its use. See the [GNU Affero General Public License](LICENSE.md) for the
+complete terms.
+
 ## How it works
 
 The pilot sends a location pin with a message such as `takeoff @ 10:30 landing @ 11:30`, then sends `landed` when safely down. Each report must be a new message; WhatsApp replies are not ingested.
