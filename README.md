@@ -43,3 +43,33 @@ docker compose run --rm -v ./seed_dummy.py:/app/seed_dummy.py:ro flights \
 ```
 
 Expect 60 markers from 60 pilots: 24 airborne, 14 overdue, 12 planned, 7 landed, 3 unclear. Stop `flights` for three minutes and the board must raise the amber staleness banner while still showing every marker, and `docker compose ps` must report `flights` as `unhealthy`.
+
+## Original specification
+
+This is the original flight-state and refresh specification, retained for reference.
+
+### Flight states and icons
+
+- **Planned**
+  - Before the active window: light icon.
+- **In air**
+  - 15 minutes before proposed take-off: set the active icon.
+  - The 15-minute threshold is a tweakable parameter.
+- **Landed**
+  - At landing plus a 5-minute leeway: mute the icon.
+  - The icon then disappears.
+- **Stale**
+  - No landing message after 2 hours: show the stale icon.
+  - The 2-hour threshold is a tweakable parameter.
+
+### Take-off and landing
+
+- The pilot sends a single location point.
+- The pilot writes the take-off and proposed landing time in a message, for example: `takeoff @ 10:30 landing @ 11:30`.
+- The pilot sends `landed` when they actually land.
+- Account for the edge case where a landing message is missing.
+- Flush stale flights daily.
+
+### Map and refresh
+
+- Refresh every 60 seconds.
