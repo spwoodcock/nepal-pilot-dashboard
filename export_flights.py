@@ -268,14 +268,10 @@ def build(reports, now):
             continue
         by_pilot[item["sender"]].append(item)
 
-    features = []
+    features, pilots = [], []
     for sender, pilot_reports in sorted(by_pilot.items()):
         flight = merge(pilot_reports)
-        if flight["lon"] is None:
-            continue
         status = status_of(flight, now)
-        if not status:
-            continue
         props = {
             "pilot": pilot_id(sender),
             "status": status,
@@ -284,20 +280,31 @@ def build(reports, now):
             "reported_at": flight["sent_at"].isoformat(),
             "landing_confirmed": flight["landing_confirmed"],
         }
-        props["note"] = (flight["note"] or "")[:NOTE_CHARS]
+
+        # Add one row per pilot: not enough to identify (phone number not provided by API)
+        pilots.append({
+            **props,
+            "reports": len(pilot_reports),
+            "first_report": min(r["sent_at"] for r in pilot_reports).isoformat(),
+            "located": flight["lon"] is not None,
+        })
+
+        if flight["lon"] is None or not status:
+            continue
         features.append({
             "type": "Feature",
             "geometry": {"type": "Point",
                          "coordinates": [flight["lon"], flight["lat"]]},
-            "properties": props,
+            "properties": {**props,
+                           "note": (flight["note"] or "")[:NOTE_CHARS]},
         })
 
-    return features, fenced
+    return features, pilots, fenced
 
 
 def snapshot(chat_id):
     now = datetime.now(timezone.utc)
-    features, fenced = build(gather(chat_id), now)
+    features, pilots, fenced = build(gather(chat_id), now)
     counts = defaultdict(int)
     for feature in features:
         counts[feature["properties"]["status"]] += 1
@@ -307,6 +314,8 @@ def snapshot(chat_id):
         "properties": {
             "generated_at": now.isoformat(),
             "counts": dict(counts),
+            "pilots": pilots,
+            "window_hours": round(LOOKBACK.total_seconds() / 3600, 1),
             "thresholds": {
                 "pre_window_min": int(PRE_WINDOW.total_seconds() // 60),
                 "post_window_min": int(POST_WINDOW.total_seconds() // 60),
@@ -361,7 +370,9 @@ def main():
     summary = ", ".join(
         f"{n} {labels.get(status, status)}" for status, n in sorted(counts.items())
     ) or "no current flights"
-    print(f"{summary} -> {args.out}"
+    window = payload["properties"]["window_hours"]
+    pilots = len(payload["properties"]["pilots"])
+    print(f"{summary}; {pilots} pilot(s) in the last {window:g}h -> {args.out}"
           + (f" ({fenced} outside the flight area)" if fenced else ""))
 
 

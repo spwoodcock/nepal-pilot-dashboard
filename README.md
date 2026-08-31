@@ -15,6 +15,8 @@ The pilot sends one location pin with a message such as `takeoff @ 10:30 landing
 
 Clicking a marker shows the reported times, the pilot's message, and the pin's coordinates as `lat, lon` with a button to copy them.
 
+Clicking any coloured dot - in the top bar or in the legend - shows only that status on the map, so you can pull the view down to just what is in the air, or just what is overdue. Click it again, press `Esc`, or use **show every flight again** to bring the rest back. The counts stay whole while a filter is on, so you can see what you are hiding.
+
 The 15-minute active window and 2-hour stale limit are configurable. Flight data refreshes every 60 seconds.
 
 If the feed stops, the board stays up and keeps the last known positions on the map:
@@ -40,4 +42,4 @@ docker compose run --rm -v ./seed_dummy.py:/app/seed_dummy.py:ro flights \
   uv run python /app/seed_dummy.py            # --clear to remove
 ```
 
-Expect 60 markers: 24 airborne, 14 overdue, 12 planned, 7 landed, 3 unclear. Stop `flights` for three minutes and the board must raise the amber staleness banner while still showing every marker, and `docker compose ps` must report `flights` as `unhealthy`.
+Expect 60 markers from 60 pilots: 24 airborne, 14 overdue, 12 planned, 7 landed, 3 unclear. Stop `flights` for three minutes and the board must raise the amber staleness banner while still showing every marker, and `docker compose ps` must report `flights` as `unhealthy`.

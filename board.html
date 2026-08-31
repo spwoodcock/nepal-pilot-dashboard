@@ -7,8 +7,10 @@
   :root {
     --airborne: #e0342a; --planned: #e08a00; --landed: #7c848e;
     --stale: #a734c8;    --unparsed: #2d6fd8; --bg: #11151a; --fg: #f2f5f8;
+    --idle: #3d4854;
   }
   * { box-sizing: border-box }
+  [hidden] { display: none !important }
   html, body { margin: 0; height: 100%; font: 14px/1.4 system-ui, sans-serif;
                background: var(--bg); color: var(--fg) }
   #map { position: absolute; inset: 44px 0 0 0 }
@@ -16,8 +18,19 @@
          align-items: center; gap: 18px; padding: 0 14px; background: #0b0e12;
          border-bottom: 1px solid #232a33; z-index: 2 }
   #bar b { font-size: 16px; letter-spacing: .3px }
-  .count { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums }
-  .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block }
+  .count { display: flex; align-items: center; gap: 6px; font: inherit;
+           font-variant-numeric: tabular-nums; color: inherit; background: none;
+           border: 1px solid transparent; border-radius: 5px; padding: 3px 8px;
+           cursor: pointer }
+  .count:hover { background: #171d25; border-color: #2c343e }
+  .count[aria-pressed="true"], .count[aria-expanded="true"] {
+           background: #1d2531; border-color: #465361 }
+  /* While a filter is on, the statuses left off the map read as switched off,
+     but stay legible: the counts are the reason to switch to another one. */
+  #bar.filtering .count[aria-pressed="false"],
+  #legend.filtering button[aria-pressed="false"] { opacity: .45 }
+  .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block;
+         flex: none }
   #age { margin-left: auto; font-variant-numeric: tabular-nums; color: #9aa4b0 }
   #clock { font-variant-numeric: tabular-nums; color: var(--fg);
            padding-left: 18px; border-left: 1px solid #232a33 }
@@ -34,7 +47,41 @@
   #legend { position: absolute; left: 12px; bottom: 12px; z-index: 2;
             background: #0b0e12dd; border: 1px solid #232a33; border-radius: 6px;
             padding: 10px 12px; line-height: 1.9 }
-  #legend div { display: flex; align-items: center; gap: 8px }
+  #legend button { display: flex; align-items: center; gap: 8px; width: 100%;
+                   font: inherit; color: inherit; text-align: left;
+                   background: none; border: 1px solid transparent;
+                   border-radius: 5px; padding: 1px 6px; cursor: pointer }
+  #legend button:hover { background: #171d25; border-color: #2c343e }
+  #legend button[aria-pressed="true"] { background: #1d2531; border-color: #465361 }
+  #legend .hint { color: #6f7b88; font-size: 12px; line-height: 1.6;
+                  padding: 0 6px 2px }
+  #clear-filter { margin-top: 4px; color: #9aa4b0; font-size: 12px;
+                  border-color: #2c343e }
+
+  #pilots { position: absolute; top: 44px; right: 0; bottom: 0; width: 290px;
+            max-width: 60vw; z-index: 2; padding: 12px 14px 18px;
+            background: #0b0e12f2; border-left: 1px solid #232a33;
+            overflow-y: auto }
+  #pilots h2 { margin: 0; font-size: 15px }
+  #pilots .sum { color: #9aa4b0; margin: 3px 0 6px }
+  #pilots ol { list-style: none; margin: 0; padding: 0 }
+  #pilots li { display: flex; align-items: baseline; gap: 8px; padding: 4px 6px;
+               border-bottom: 1px solid #171d25; border-radius: 5px }
+  #pilots li.locatable { cursor: pointer }
+  #pilots li.locatable:hover { background: #171d25 }
+  #pilots .pid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                 letter-spacing: .2px }
+  #pilots .idle .pid { color: #9aa4b0 }
+  #pilots .what { margin-left: auto; text-align: right; color: #9aa4b0;
+                  font-variant-numeric: tabular-nums }
+  #pilots li.group { display: block; border: 0; margin: 13px 0 3px; padding: 0 6px;
+                     color: #6f7b88; font-size: 11px; text-transform: uppercase;
+                     letter-spacing: .6px }
+  #pilots .foot { color: #6f7b88; font-size: 12px; margin: 16px 0 0 }
+  #pilots-close { float: right; font: inherit; line-height: 1; color: #9aa4b0;
+                  background: none; border: 1px solid #2c343e; border-radius: 4px;
+                  padding: 2px 7px; cursor: pointer }
+  #pilots-close:hover { color: var(--fg); border-color: #3d4854 }
   .maplibregl-popup-content { background: #0b0e12; color: var(--fg);
                               border: 1px solid #2c343e; font-size: 13px }
   .maplibregl-popup-content b { display: block; margin-bottom: 4px }
@@ -52,22 +99,38 @@
 
 <div id="bar">
   <b>Nepal drone flights</b>
-  <span class="count"><i class="dot" style="background:var(--airborne)"></i><span id="c-airborne">0</span> in the air</span>
-  <span class="count"><i class="dot" style="background:var(--planned)"></i><span id="c-planned">0</span> planned</span>
-  <span class="count"><i class="dot" style="background:var(--stale)"></i><span id="c-stale">0</span> overdue</span>
-  <span class="count"><i class="dot" style="background:var(--landed)"></i><span id="c-landed">0</span> landed</span>
+  <button type="button" class="count" data-status="airborne" aria-pressed="false"
+          title="Show only flights in the air"><i class="dot" style="background:var(--airborne)"></i><span id="c-airborne">0</span> in the air</button>
+  <button type="button" class="count" data-status="planned" aria-pressed="false"
+          title="Show only planned flights"><i class="dot" style="background:var(--planned)"></i><span id="c-planned">0</span> planned</button>
+  <button type="button" class="count" data-status="stale" aria-pressed="false"
+          title="Show only overdue flights"><i class="dot" style="background:var(--stale)"></i><span id="c-stale">0</span> overdue</button>
+  <button type="button" class="count" data-status="landed" aria-pressed="false"
+          title="Show only landed flights"><i class="dot" style="background:var(--landed)"></i><span id="c-landed">0</span> landed</button>
+  <button type="button" class="count" id="pilots-btn" aria-expanded="false"
+          aria-controls="pilots" hidden
+          title="List the pilots seen in the data"><span id="c-pilots">0</span> pilots</button>
   <span id="age">waiting for flight data…</span>
   <span id="clock"></span>
 </div>
 <div id="banner"></div>
 <div id="map"></div>
 <div id="legend">
-  <div><i class="dot" style="background:var(--airborne)"></i> currently in the air</div>
-  <div><i class="dot" style="background:var(--planned)"></i> due to fly</div>
-  <div><i class="dot" style="background:var(--stale)"></i> overdue - no landing message</div>
-  <div><i class="dot" style="background:var(--landed)"></i> recently landed</div>
-  <div><i class="dot" style="background:var(--unparsed)"></i> report received - flight times unclear</div>
+  <div class="hint">click to show only that status</div>
+  <button type="button" data-status="airborne" aria-pressed="false"><i class="dot" style="background:var(--airborne)"></i> currently in the air</button>
+  <button type="button" data-status="planned" aria-pressed="false"><i class="dot" style="background:var(--planned)"></i> due to fly</button>
+  <button type="button" data-status="stale" aria-pressed="false"><i class="dot" style="background:var(--stale)"></i> overdue - no landing message</button>
+  <button type="button" data-status="landed" aria-pressed="false"><i class="dot" style="background:var(--landed)"></i> recently landed</button>
+  <button type="button" data-status="unparsed" aria-pressed="false"><i class="dot" style="background:var(--unparsed)"></i> report received - flight times unclear</button>
+  <button type="button" id="clear-filter" hidden>show every flight again</button>
 </div>
+<aside id="pilots" hidden>
+  <button type="button" id="pilots-close" aria-label="Close the pilot list">close</button>
+  <h2>Pilots</h2>
+  <p class="sum" id="pilots-sum"></p>
+  <ol id="pilots-list"></ol>
+  <p class="foot" id="pilots-foot"></p>
+</aside>
 
 <script type="module">
 import * as maplibregl from "https://cdn.jsdelivr.net/npm/maplibre-gl@6.6.0/dist/maplibre-gl.mjs";
@@ -83,7 +146,12 @@ const EXPIRED_S = 60 * 60;
 const NEPAL_MIN = 5 * 60 + 45;
 
 let map = null, mapReady = false, feed = null, lastGenerated = null, fitted = false;
-let fatal = null, bannerHtml = null, mapTop = null;
+let fatal = null, bannerHtml = null, mapBox = null, popup = null, listHtml = null;
+
+// Empty means show everything. Statuses in here are the only ones drawn.
+const filter = new Set();
+// Pilot id -> the flight currently on the map, so the pilot list can fly to it.
+let current = new Map();
 
 const COLOUR = ["match", ["get", "status"],
   "airborne", "#e0342a", "planned", "#e08a00", "landed", "#7c848e",
@@ -160,25 +228,29 @@ function onMapLoad() {
     paint: { "text-color": "#f2f5f8", "text-halo-color": "#11151a", "text-halo-width": 1.6 }
   });
 
-  map.on("click", "dot", e => {
-    const p = e.features[0].properties;
-    new maplibregl.Popup({ closeButton: false })
-      .setLngLat([p.lon, p.lat])
-      .setHTML(
-        `<b>Pilot ${p.pilot}</b>` +
-        `${STATUS_TEXT[p.status] || p.status}<br>` +
-        `take-off ${hhmm(p.takeoff)} &nbsp; landing ${hhmm(p.landing)}<br>` +
-        `reported at ${hhmm(p.reported_at)}` +
-        (p.note ? `<div class="note">“${escapeHtml(p.note)}”</div>` : "") +
-        coordRow(p.lat, p.lon) +
-        `<div class="note">Reported via WhatsApp channel</div>`)
-      .addTo(map);
-  });
+  map.on("click", "dot", e => openPopup(e.features[0].properties));
   map.on("mouseenter", "dot", () => map.getCanvas().style.cursor = "pointer");
   map.on("mouseleave", "dot", () => map.getCanvas().style.cursor = "");
 
   mapReady = true;
   render();
+}
+
+// One popup at a time: the pilot list opens these too, and a stack of them
+// would bury the map.
+function openPopup(p) {
+  if (popup) popup.remove();
+  popup = new maplibregl.Popup({ closeButton: false })
+    .setLngLat([p.lon, p.lat])
+    .setHTML(
+      `<b>Pilot ${p.pilot}</b>` +
+      `${STATUS_TEXT[p.status] || p.status}<br>` +
+      `take-off ${hhmm(p.takeoff)} &nbsp; landing ${hhmm(p.landing)}<br>` +
+      `reported at ${hhmm(p.reported_at)}` +
+      (p.note ? `<div class="note">“${escapeHtml(p.note)}”</div>` : "") +
+      coordRow(p.lat, p.lon) +
+      `<div class="note">Reported via WhatsApp channel</div>`)
+    .addTo(map);
 }
 
 // Five decimals is roughly a metre, and lat,lon is the order the tools a
@@ -297,6 +369,7 @@ function render() {
   const th = feed.properties.thresholds || {};
   const counts = { airborne: 0, planned: 0, stale: 0, landed: 0, unparsed: 0 };
   const features = [];
+  current = new Map();
 
   for (const f of feed.features) {
     const p = { ...f.properties };
@@ -314,14 +387,148 @@ function render() {
       status === "stale" ? `overdue since ${hhmm(p.landing || p.takeoff)}` :
       status === "landed" ? `landed ${hhmm(p.landing)}` : "flight times unclear");
     features.push({ ...f, properties: p });
+    current.set(p.pilot, p);
   }
 
   for (const s of ["airborne", "planned", "stale", "landed"])
     document.getElementById("c-" + s).textContent = counts[s] || 0;
 
+  // The counts stay whole while a filter is on - they are what tells a
+  // controller which status to switch to next.
   if (mapReady)
-    map.getSource("flights").setData({ type: "FeatureCollection", features });
+    map.getSource("flights").setData({
+      type: "FeatureCollection",
+      features: filter.size
+        ? features.filter(f => filter.has(f.properties.status)) : features
+    });
+
+  renderPilots(now, th);
 }
+
+// ---- status filter -------------------------------------------------------
+// Every dot with a data-status - the top bar counts and the legend - is the
+// same switch, so a controller can reach for whichever is nearer the pointer.
+
+function paintFilter() {
+  const on = filter.size > 0;
+  document.getElementById("bar").classList.toggle("filtering", on);
+  document.getElementById("legend").classList.toggle("filtering", on);
+  for (const el of document.querySelectorAll("[data-status]"))
+    el.setAttribute("aria-pressed", String(filter.has(el.dataset.status)));
+  document.getElementById("clear-filter").hidden = !on;
+}
+
+function setFilter(statuses) {
+  filter.clear();
+  for (const status of statuses) filter.add(status);
+  paintFilter();
+  render();
+}
+
+document.addEventListener("click", ev => {
+  const btn = ev.target.closest("[data-status]");
+  if (!btn) return;
+  const status = btn.dataset.status;
+  setFilter(filter.has(status) ? [...filter].filter(s => s !== status)
+                               : [...filter, status]);
+});
+
+document.getElementById("clear-filter").addEventListener("click", () => setFilter([]));
+
+document.addEventListener("keydown", ev => {
+  if (ev.key !== "Escape") return;
+  if (filter.size) setFilter([]);
+  else showPilots(false);
+});
+
+// ---- pilots --------------------------------------------------------------
+// WhatsApp hands us no name and no phone number, so a pilot is only ever the
+// re-keyed sender id. That is still enough to tell pilots apart, count how many
+// were operating over the data window, and follow one back to their pin.
+
+const PILOT_ORDER = { airborne: 0, stale: 1, planned: 2, landed: 3, unparsed: 4 };
+
+function pilotWhat(r) {
+  switch (r.status) {
+    case "airborne": return r.landing ? `lands ${hhmm(r.landing)}` : "in the air";
+    case "planned":  return `flies ${hhmm(r.takeoff)}`;
+    case "stale":    return `overdue since ${hhmm(r.landing || r.takeoff)}`;
+    case "landed":   return `landed ${hhmm(r.landing)}`;
+    case "unparsed": return "times unclear";
+    default:         return `last report ${hhmm(r.reported_at)}`;
+  }
+}
+
+function pilotRow(r) {
+  const colour = r.status ? `var(--${r.status})` : "var(--idle)";
+  const found = current.has(r.pilot);
+  const cls = [r.status ? "" : "idle", found ? "locatable" : ""].filter(Boolean);
+  return `<li class="${cls.join(" ")}" data-pilot="${escapeHtml(r.pilot)}"` +
+         (found ? ` title="Show this pilot on the map"` : "") + `>` +
+         `<i class="dot" style="background:${colour}"></i>` +
+         `<span class="pid">${escapeHtml(r.pilot)}</span>` +
+         `<span class="what">${pilotWhat(r)}${r.located ? "" : " · no pin"}</span></li>`;
+}
+
+function renderPilots(now, th) {
+  const roster = feed && feed.properties.pilots;
+  const btn = document.getElementById("pilots-btn");
+  if (!roster) { btn.hidden = true; return; }   // feed from an older exporter
+
+  btn.hidden = false;
+  document.getElementById("c-pilots").textContent = roster.length;
+  const panel = document.getElementById("pilots");
+  if (panel.hidden) return;
+
+  // Recompute each pilot's status the same way the map does, so the list and
+  // the markers never disagree between feed refreshes.
+  const rows = roster.map(r => ({ ...r, status: statusOf(r, now, th) }));
+  const flying = rows.filter(r => r.status).sort((a, b) =>
+    PILOT_ORDER[a.status] - PILOT_ORDER[b.status] || a.pilot.localeCompare(b.pilot));
+  const done = rows.filter(r => !r.status).sort((a, b) =>
+    Date.parse(b.reported_at) - Date.parse(a.reported_at));
+  const hours = feed.properties.window_hours;
+
+  document.getElementById("pilots-sum").textContent =
+    `${flying.length} with a current flight · ${rows.length} seen` +
+    (hours ? ` in the last ${hours}h` : "");
+  document.getElementById("pilots-foot").textContent =
+    "Pilots are counted by who sent the reports. WhatsApp gives no names or " +
+    "phone numbers, so each one is an anonymous id that stays the same all day.";
+
+  const html =
+    (flying.length ? `<li class="group">flying now</li>` +
+                     flying.map(pilotRow).join("") : "") +
+    (done.length ? `<li class="group">earlier in the window</li>` +
+                   done.map(pilotRow).join("") : "") +
+    (rows.length ? "" : `<li class="group">no pilots have reported yet</li>`);
+  if (html !== listHtml) document.getElementById("pilots-list").innerHTML = listHtml = html;
+}
+
+function showPilots(open) {
+  const panel = document.getElementById("pilots");
+  panel.hidden = !open;
+  document.getElementById("pilots-btn").setAttribute("aria-expanded", String(open));
+  listHtml = null;
+  render();
+  paintAge();          // re-runs the layout with the panel in or out
+}
+
+document.getElementById("pilots-btn").addEventListener("click", () =>
+  showPilots(document.getElementById("pilots").hidden));
+document.getElementById("pilots-close").addEventListener("click", () => showPilots(false));
+
+document.getElementById("pilots-list").addEventListener("click", ev => {
+  const row = ev.target.closest("li[data-pilot]");
+  if (!row || !mapReady) return;
+  const flight = current.get(row.dataset.pilot);
+  if (!flight) return;                       // no current flight to point at
+  // Don't send the map somewhere a filter is hiding.
+  if (filter.size && !filter.has(flight.status)) setFilter([]);
+  map.flyTo({ center: [flight.lon, flight.lat],
+              zoom: Math.max(map.getZoom(), 12), duration: 700 });
+  openPopup(flight);
+});
 
 async function tick() {
   try {
@@ -393,17 +600,24 @@ function paintAge() {
   fitMapUnderBanner(banner.offsetHeight);
 }
 
-// The banner is an overlay, so push the map clear of it - otherwise it hides
-// the northernmost markers for as long as the warning is up.
+// The banner and the pilot panel are overlays, so give the map the space that
+// is left - otherwise the banner hides the northernmost markers and the panel
+// sits on top of the zoom controls.
 function fitMapUnderBanner(bannerPx) {
+  const panel = document.getElementById("pilots");
   const top = 44 + bannerPx;
-  if (top === mapTop) return;
-  mapTop = top;
-  document.getElementById("map").style.top = top + "px";
+  const right = panel.hidden ? 0 : panel.offsetWidth;
+  const box = top + ":" + right;
+  if (box === mapBox) return;
+  mapBox = box;
+  panel.style.top = top + "px";
+  Object.assign(document.getElementById("map").style,
+                { top: top + "px", right: right + "px" });
   if (map) map.resize();
 }
 
 // Start this here so the warning still works when the map cannot load.
+paintFilter();
 tick();
 paintClock();
 setInterval(tick, POLL_MS);
