@@ -283,7 +283,6 @@ def build(reports, now):
             "landing": flight["landing"].isoformat() if flight["landing"] else None,
             "reported_at": flight["sent_at"].isoformat(),
             "landing_confirmed": flight["landing_confirmed"],
-            "source": "Reported by the pilot; not verified",
         }
         props["note"] = (flight["note"] or "")[:NOTE_CHARS]
         features.append({

@@ -1,7 +1,8 @@
 # Nepal pilot dashboard
 
-In short: drone pilots report flights in WhatsApp, and ATC watches them on a live map.  
-The points come from [ChatMap](https://github.com/hotosm/chatmap) and are self-reported, so do not treat them as verified.
+Pilot reports flight times via WhatsApp chat --> live dashboard for monitoring.
+
+The points come from [ChatMap](https://github.com/hotosm/chatmap.
 
 ## How it works
 
@@ -12,12 +13,14 @@ The pilot sends one location pin with a message such as `takeoff @ 10:30 landing
 - **Landed:** a muted marker after the pilot sends `landed`, then removed after a 5-minute leeway.
 - **Stale:** an overdue marker after 2 hours without `landed`; old flights are cleared daily.
 
+Clicking a marker shows the reported times, the pilot's message, and the pin's coordinates as `lat, lon` with a button to copy them.
+
 The 15-minute active window and 2-hour stale limit are configurable. Flight data refreshes every 60 seconds.
 
 If the feed stops, the board stays up and keeps the last known positions on the map:
 
 - **After 3 minutes** (three missed exports): an amber banner giving the time of the last update, with the map untouched.
-- **After 1 hour:** a red banner and the map greys out - too old to plan against.
+- **After 1 hour:** a red warning banner - too old to plan against.
 
 ## Deploy
 
@@ -29,11 +32,12 @@ If the feed stops, the board stays up and keeps the last known positions on the 
 
 ## Test
 
-Fill the database with a realistic morning (80 pilots, every icon state), check the board, then clear it. Never leave seed data on a live board.
+Fill the database with a realistic dataset (80 pilots, every icon state), check the board, then clear it.
+Don't leave seed data on the live board.
 
 ```
 docker compose run --rm -v ./seed_dummy.py:/app/seed_dummy.py:ro flights \
   uv run python /app/seed_dummy.py            # --clear to remove
 ```
 
-Expect 60 markers: 24 airborne, 14 overdue, 12 planned, 7 landed, 3 unclear. Stop `flights` for three minutes and the board must raise the amber staleness banner while still showing every marker.
+Expect 60 markers: 24 airborne, 14 overdue, 12 planned, 7 landed, 3 unclear. Stop `flights` for three minutes and the board must raise the amber staleness banner while still showing every marker, and `docker compose ps` must report `flights` as `unhealthy`.

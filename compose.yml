@@ -68,6 +68,12 @@ services:
     image: *chatmap
     restart: unless-stopped
     command: ["/app/flights_loop.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", 'test -n "$$(find /out/flights.geojson -mmin -3 2>/dev/null)"']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     env_file: [.env]
     volumes:
       - ./export_flights.py:/app/export_flights.py:ro
