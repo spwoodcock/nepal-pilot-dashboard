@@ -1,0 +1,18 @@
+nepal-pilots.response.hotosm.org {
+	root * /srv/flights
+
+	basic_auth {
+		admin {env.BOARD_PASSWORD_HASH}
+	}
+
+	@down file /DOWN
+	handle @down {
+		respond "BOARD DOWN - the drone feed is not updating. Do not rely on this map." 503
+	}
+
+	handle {
+		file_server
+		header Cache-Control "no-cache"
+		header X-Robots-Tag "noindex, nofollow"
+	}
+}

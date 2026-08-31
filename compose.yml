@@ -1,0 +1,114 @@
+# Based on HOT's ChatMap stack: https://github.com/hotosm/chatmap/blob/master/compose.yml
+name: nepal-pilots
+
+x-chatmap: &chatmap ghcr.io/hotosm/chatmap-api:latest
+
+services:
+  chatmap-go:
+    image: ghcr.io/hotosm/chatmap-im-connector:latest
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: chatmap-redis
+      CHATMAP_ENC_KEY: ${CHATMAP_ENC_KEY:?}
+    ports: ["127.0.0.1:8001:8001"]
+    volumes: ["./sessions:/app/sessions"]
+    depends_on: [chatmap-redis]
+
+  chatmap-api:
+    image: *chatmap
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: chatmap-redis
+      SERVER_URL: http://chatmap-go:8001
+      CHATMAP_ENC_KEY: ${CHATMAP_ENC_KEY:?}
+      CHATMAP_DB_HOST: chatmap-db
+      CHATMAP_DB: ${POSTGRES_DB:-chatmap}
+      CHATMAP_DB_USER: ${POSTGRES_USER:-admin}
+      CHATMAP_DB_PASSWORD: ${POSTGRES_PASSWORD:?}
+      CHATMAP_EXPIRING_MIN: 30
+      CHATMAP_API_URL: http://chatmap-api:8000
+      HANKO_API_URL: https://login.hotosm.org
+      JWT_ISSUER: https://login.hotosm.org
+      COOKIE_SECRET: ${COOKIE_SECRET:?}
+    volumes: ["./media:/app/media"]
+    depends_on:
+      chatmap-db: {condition: service_healthy}
+      chatmap-redis: {condition: service_started}
+
+  chatmap-migrate:
+    image: *chatmap
+    command: uv run alembic upgrade head
+    restart: "no"
+    environment:
+      CHATMAP_DB_HOST: chatmap-db
+      CHATMAP_DB: ${POSTGRES_DB:-chatmap}
+      CHATMAP_DB_USER: ${POSTGRES_USER:-admin}
+      CHATMAP_DB_PASSWORD: ${POSTGRES_PASSWORD:?}
+    depends_on:
+      chatmap-db: {condition: service_healthy}
+
+  chatmap-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  chatmap-db:
+    image: postgis/postgis:18-3.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatmap}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes: ["db:/var/lib/postgresql"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
+      interval: 5s
+      retries: 10
+
+  flights:
+    image: *chatmap
+    restart: unless-stopped
+    command: >
+      sh -c 'while :; do
+        uv run python /app/export_flights.py --out /out/flights.geojson || true;
+        sleep ${FLIGHTS_INTERVAL:-60};
+      done'
+    env_file: [.env]
+    volumes:
+      - ./export_flights.py:/app/export_flights.py:ro
+      - ./web:/out
+    depends_on:
+      chatmap-db: {condition: service_healthy}
+
+  watchdog:
+    image: busybox
+    restart: unless-stopped
+    command: >
+      sh -c 'while :; do
+        if [ -z "$$(find /out/flights.geojson -mmin -3 2>/dev/null)" ];
+          then touch /out/DOWN; else rm -f /out/DOWN; fi;
+        sleep 30;
+      done'
+    volumes: ["./web:/out"]
+
+  board:
+    image: caddy:2
+    restart: unless-stopped
+    # Hashed at startup so .env holds a plain password: a bcrypt hash is full
+    # of $, which compose would eat during interpolation.
+    command: >
+      sh -c 'export BOARD_PASSWORD_HASH=$$(caddy hash-password --plaintext "$$BOARD_PASSWORD");
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
+    environment:
+      BOARD_PASSWORD: ${BOARD_PASSWORD:-password}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web:/srv/flights
+      - ./board.html:/srv/flights/index.html:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  db:
+  caddy_data:
+  caddy_config:

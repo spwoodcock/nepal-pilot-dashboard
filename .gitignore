@@ -1,0 +1,6 @@
+web/*
+!web/.gitkeep
+sessions/
+media/
+.env
+__pycache__/
