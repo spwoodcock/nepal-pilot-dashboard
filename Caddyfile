@@ -5,8 +5,7 @@ nepal-pilots.response.hotosm.org {
 		admin {env.BOARD_PASSWORD_HASH}
 	}
 
-	# No 503 kill switch: a stale board is still worth reading, so the page
-	# itself warns and keeps showing the last known positions.
+	# Keep serving stale data; the dashboard displays its own warning.
 	file_server
 	header Cache-Control "no-cache"
 	header X-Robots-Tag "noindex, nofollow"

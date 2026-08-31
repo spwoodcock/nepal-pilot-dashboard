@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add or remove realistic sample flights in ChatMap for testing."""
+"""Seed or clear sample ChatMap flights."""
 
 import argparse
 import os

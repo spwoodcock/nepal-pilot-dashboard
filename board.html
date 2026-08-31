@@ -25,8 +25,6 @@
   .count:hover { background: #171d25; border-color: #2c343e }
   .count[aria-pressed="true"], .count[aria-expanded="true"] {
            background: #1d2531; border-color: #465361 }
-  /* While a filter is on, the statuses left off the map read as switched off,
-     but stay legible: the counts are the reason to switch to another one. */
   #bar.filtering .count[aria-pressed="false"],
   #legend.filtering button[aria-pressed="false"] { opacity: .45 }
   .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block;
@@ -41,9 +39,6 @@
                  font-weight: 400; opacity: .9 }
   body.stale #banner { display: block; background: #8a5300 }
   body.expired #banner { display: block; background: #b3140a }
-  /* The expired state is carried by the banner alone. Greying the map made the
-     last known positions hard to read, which is when a controller most needs
-     to see them. */
   #legend { position: absolute; left: 12px; bottom: 12px; z-index: 2;
             background: #0b0e12dd; border: 1px solid #232a33; border-radius: 6px;
             padding: 10px 12px; line-height: 1.9 }
@@ -138,9 +133,7 @@ import * as maplibregl from "https://cdn.jsdelivr.net/npm/maplibre-gl@6.6.0/dist
 const FEED = "./flights.geojson";
 const POLL_MS = 15000;
 const TICK_MS = 1000;
-// The exporter runs every 60s. Warn after three missed runs, but keep showing
-// the last known positions: they stay useful long after the feed dies. Only
-// past EXPIRED_S is the map too old to plan against.
+// Warn after three missed exports, but keep positions until they are too old to use.
 const STALE_S = 180;
 const EXPIRED_S = 60 * 60;
 const NEPAL_MIN = 5 * 60 + 45;
@@ -148,9 +141,7 @@ const NEPAL_MIN = 5 * 60 + 45;
 let map = null, mapReady = false, feed = null, lastGenerated = null, fitted = false;
 let fatal = null, bannerHtml = null, mapBox = null, popup = null, listHtml = null;
 
-// Empty means show everything. Statuses in here are the only ones drawn.
 const filter = new Set();
-// Pilot id -> the flight currently on the map, so the pilot list can fly to it.
 let current = new Map();
 
 const COLOUR = ["match", ["get", "status"],
@@ -236,8 +227,6 @@ function onMapLoad() {
   render();
 }
 
-// One popup at a time: the pilot list opens these too, and a stack of them
-// would bury the map.
 function openPopup(p) {
   if (popup) popup.remove();
   popup = new maplibregl.Popup({ closeButton: false })
@@ -272,8 +261,6 @@ function coordRow(lat, lon) {
          `${CLIPBOARD_ICON}</button></div>`;
 }
 
-// Popups are rebuilt on every click, so listen once here rather than wiring up
-// each copy button as it appears.
 document.addEventListener("click", async ev => {
   const btn = ev.target.closest(".copy");
   if (!btn) return;
@@ -327,9 +314,7 @@ function hhmm(iso) {
   return pad2(n.getHours()) + ":" + pad2(n.getMinutes());
 }
 
-// Every other time on the board is Nepal local, so this is too. The ticking
-// seconds also show at a glance that the page itself is still alive, which the
-// feed age alone cannot.
+// Use Nepal time; ticking seconds also show that the page is responsive.
 function paintClock() {
   const n = nepal(new Date());
   document.getElementById("clock").textContent =
@@ -393,8 +378,7 @@ function render() {
   for (const s of ["airborne", "planned", "stale", "landed"])
     document.getElementById("c-" + s).textContent = counts[s] || 0;
 
-  // The counts stay whole while a filter is on - they are what tells a
-  // controller which status to switch to next.
+  // Keep total counts visible while filtering.
   if (mapReady)
     map.getSource("flights").setData({
       type: "FeatureCollection",
@@ -404,10 +388,6 @@ function render() {
 
   renderPilots(now, th);
 }
-
-// ---- status filter -------------------------------------------------------
-// Every dot with a data-status - the top bar counts and the legend - is the
-// same switch, so a controller can reach for whichever is nearer the pointer.
 
 function paintFilter() {
   const on = filter.size > 0;
@@ -441,10 +421,7 @@ document.addEventListener("keydown", ev => {
   else showPilots(false);
 });
 
-// ---- pilots --------------------------------------------------------------
-// WhatsApp hands us no name and no phone number, so a pilot is only ever the
-// re-keyed sender id. That is still enough to tell pilots apart, count how many
-// were operating over the data window, and follow one back to their pin.
+// WhatsApp provides no name or phone number, so pilots use re-keyed sender IDs.
 
 const PILOT_ORDER = { airborne: 0, stale: 1, planned: 2, landed: 3, unparsed: 4 };
 
@@ -473,15 +450,14 @@ function pilotRow(r) {
 function renderPilots(now, th) {
   const roster = feed && feed.properties.pilots;
   const btn = document.getElementById("pilots-btn");
-  if (!roster) { btn.hidden = true; return; }   // feed from an older exporter
+  if (!roster) { btn.hidden = true; return; }  // Support feeds from older exporters.
 
   btn.hidden = false;
   document.getElementById("c-pilots").textContent = roster.length;
   const panel = document.getElementById("pilots");
   if (panel.hidden) return;
 
-  // Recompute each pilot's status the same way the map does, so the list and
-  // the markers never disagree between feed refreshes.
+  // Recompute statuses so the list and markers agree between feed refreshes.
   const rows = roster.map(r => ({ ...r, status: statusOf(r, now, th) }));
   const flying = rows.filter(r => r.status).sort((a, b) =>
     PILOT_ORDER[a.status] - PILOT_ORDER[b.status] || a.pilot.localeCompare(b.pilot));
@@ -511,7 +487,7 @@ function showPilots(open) {
   document.getElementById("pilots-btn").setAttribute("aria-expanded", String(open));
   listHtml = null;
   render();
-  paintAge();          // re-runs the layout with the panel in or out
+  paintAge();
 }
 
 document.getElementById("pilots-btn").addEventListener("click", () =>
@@ -522,8 +498,7 @@ document.getElementById("pilots-list").addEventListener("click", ev => {
   const row = ev.target.closest("li[data-pilot]");
   if (!row || !mapReady) return;
   const flight = current.get(row.dataset.pilot);
-  if (!flight) return;                       // no current flight to point at
-  // Don't send the map somewhere a filter is hiding.
+  if (!flight) return;
   if (filter.size && !filter.has(flight.status)) setFilter([]);
   map.flyTo({ center: [flight.lon, flight.lat],
               zoom: Math.max(map.getZoom(), 12), duration: 700 });
@@ -592,7 +567,7 @@ function paintAge() {
 
   if (fatal) { level = "expired"; html = fatal; }
 
-  if (html !== bannerHtml) {   // avoid re-rendering the banner every tick
+  if (html !== bannerHtml) {
     banner.innerHTML = bannerHtml = html;
     document.body.classList.toggle("stale", level === "stale");
     document.body.classList.toggle("expired", level === "expired");
@@ -600,9 +575,7 @@ function paintAge() {
   fitMapUnderBanner(banner.offsetHeight);
 }
 
-// The banner and the pilot panel are overlays, so give the map the space that
-// is left - otherwise the banner hides the northernmost markers and the panel
-// sits on top of the zoom controls.
+// Keep overlays from covering markers and map controls.
 function fitMapUnderBanner(bannerPx) {
   const panel = document.getElementById("pilots");
   const top = 44 + bannerPx;
@@ -616,7 +589,7 @@ function fitMapUnderBanner(bannerPx) {
   if (map) map.resize();
 }
 
-// Start this here so the warning still works when the map cannot load.
+// Start outside map initialization so feed warnings work if the map fails.
 paintFilter();
 tick();
 paintClock();

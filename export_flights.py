@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn current ChatMap flight reports into GeoJSON for the live board."""
+"""Export current ChatMap flight reports as GeoJSON."""
 
 import argparse
 import base64
@@ -22,8 +22,8 @@ NEPAL = timezone(timedelta(hours=5, minutes=45))
 PRE_WINDOW = timedelta(minutes=int(env("FLIGHTS_PRE_WINDOW_MIN", default="15")))
 POST_WINDOW = timedelta(minutes=int(env("FLIGHTS_POST_WINDOW_MIN", default="5")))
 STALE_AFTER = timedelta(minutes=int(env("FLIGHTS_STALE_AFTER_MIN", default="120")))
-DROP_STALE_AFTER = timedelta(hours=4)   # past any battery; stops the board silting up
-LOOKBACK = timedelta(hours=14)          # one operating day
+DROP_STALE_AFTER = timedelta(hours=4)  # Past battery life; prevents old flights accumulating.
+LOOKBACK = timedelta(hours=14)  # One operating day.
 
 BBOX = [float(n) for n in
         env("FLIGHTS_BBOX", default="84.479370,27.474161,86.044922,28.623104").split(",")]
@@ -32,10 +32,8 @@ NOTE_CHARS = 120
 ID_KEY = env("FLIGHTS_ID_KEY", default="")
 OUT_PATH = "/out/flights.geojson"
 
-# The linked device ingests every chat it can see, and ChatMap drops the chat
-# id before storing, so points from unrelated conversations land on the same
-# map. Set this to publish only senders seen in the pilots' group: run
-# --list-chats to find it.
+# ChatMap drops chat IDs, so restrict output to senders observed in the pilot chat.
+# Use --list-chats to find its hash.
 CHAT_HASH = env("FLIGHTS_CHAT_HASH", default="")
 ALLOWLIST = "/out/senders.json"
 
@@ -77,13 +75,13 @@ DURATION_RE = re.compile(r"(?:\+|\bfor\b)\s*(\d{1,3})\s*(?:m|min|mins|minutes)?\
 
 
 def pilot_id(sender_hash):
-    """Re-key ChatMap's sender hash before publishing it."""
+    """Re-key a sender hash before publication."""
     return hmac.new(ID_KEY.encode(), sender_hash.encode(),
                     hashlib.sha256).hexdigest()[:8]
 
 
 def resolve_clock(hour, minute, near):
-    """Use the date nearest to the reported local time."""
+    """Resolve a reported time to the nearest local date."""
     if hour > 23 or minute > 59:
         return None
     local = near.astimezone(NEPAL)
@@ -202,7 +200,6 @@ def stream_entries(session):
 
 
 def fetch_messages(chat_id):
-    """Read follow-up messages that do not include a pin from the stream."""
     from Crypto.Cipher import AES
 
     out, in_chat = [], set()
@@ -239,11 +236,10 @@ def gather(chat_id):
         print(f"Warning: could not read follow-up messages ({err}). "
               f"Pilots must send their pin again with 'landed'.", file=sys.stderr)
 
-    # Filter only when the stream was actually readable. Failing closed would
-    # empty the board, and an empty board reads as an empty sky.
+    # Filter only after reading the stream; an empty board could imply an empty sky.
     if CHAT_HASH and stream_ok:
         allowed = set(json.load(open(ALLOWLIST))) if os.path.exists(ALLOWLIST) else set()
-        allowed |= in_chat          # remembered: Redis keeps only 30 minutes
+        allowed |= in_chat  # Persist senders because Redis retains only 30 minutes.
         json.dump(sorted(allowed), open(ALLOWLIST, "w"))
         dropped = [r for r in reports if r["sender"] not in allowed]
         if dropped:
@@ -281,7 +277,6 @@ def build(reports, now):
             "landing_confirmed": flight["landing_confirmed"],
         }
 
-        # Add one row per pilot: not enough to identify (phone number not provided by API)
         pilots.append({
             **props,
             "reports": len(pilot_reports),
@@ -361,7 +356,8 @@ def main():
     if args.out == "-":
         sys.stdout.write(body.decode())
     else:
-        tmp = f"{args.out}.tmp"  # Rename only after writing, so the board never reads half a file.
+        # Publish atomically so the dashboard never reads a partial file.
+        tmp = f"{args.out}.tmp"
         with open(tmp, "wb") as handle:
             handle.write(body)
         os.replace(tmp, args.out)

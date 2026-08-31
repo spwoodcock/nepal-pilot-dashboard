@@ -1,25 +1,26 @@
 # Nepal pilot dashboard
 
-Pilot reports flight times via WhatsApp chat --> live dashboard for monitoring.
+A live dashboard of pilot flight reports sent through WhatsApp.
 
-The points come from [ChatMap](https://github.com/hotosm/chatmap.
+Reports are ingested by [ChatMap](https://github.com/hotosm/chatmap).
+
+> [!NOTE]
+> The dashboard does not need to be public. For sensitive data, host it internally and configure `Caddyfile` for internal DNS and TLS.
 
 ## How it works
 
-The pilot sends one location pin with a message such as `takeoff @ 10:30 landing @ 11:30`, then sends `landed` when safely down. Pilots must send a new message rather than replying to an existing one, as WhatsApp replies are not ingested.
+The pilot sends a location pin with a message such as `takeoff @ 10:30 landing @ 11:30`, then sends `landed` when safely down. Each report must be a new message; WhatsApp replies are not ingested.
 
 - **Planned:** a light marker until 15 minutes before take-off.
 - **In the air:** an active marker from 15 minutes before take-off.
 - **Landed:** a muted marker after the pilot sends `landed`, then removed after a 5-minute leeway.
 - **Stale:** an overdue marker after 2 hours without `landed`; old flights are cleared daily.
 
-Clicking a marker shows the reported times, the pilot's message, and the pin's coordinates as `lat, lon` with a button to copy them.
-
-Clicking any coloured dot - in the top bar or in the legend - shows only that status on the map, so you can pull the view down to just what is in the air, or just what is overdue. Click it again, press `Esc`, or use **show every flight again** to bring the rest back. The counts stay whole while a filter is on, so you can see what you are hiding.
+Click a marker for its report and copyable `lat, lon` coordinates. Click a coloured status dot to filter the map; click it again, press `Esc`, or select **show every flight again** to clear the filter.
 
 The 15-minute active window and 2-hour stale limit are configurable. Flight data refreshes every 60 seconds.
 
-If the feed stops, the board stays up and keeps the last known positions on the map:
+If the feed stops, the board keeps showing the last known positions:
 
 - **After 3 minutes** (three missed exports): an amber banner giving the time of the last update, with the map untouched.
 - **After 1 hour:** a red warning banner - too old to plan against.
@@ -34,8 +35,7 @@ If the feed stops, the board stays up and keeps the last known positions on the 
 
 ## Test
 
-Fill the database with a realistic dataset (80 pilots, every icon state), check the board, then clear it.
-Don't leave seed data on the live board.
+Fill the database with a realistic dataset, check the board, then clear it. Do not leave seed data on the live board.
 
 ```
 docker compose run --rm -v ./seed_dummy.py:/app/seed_dummy.py:ro flights \

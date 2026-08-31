@@ -85,8 +85,7 @@ services:
   board:
     image: caddy:2
     restart: unless-stopped
-    # Hashed at startup so .env holds a plain password: a bcrypt hash is full
-    # of $, which compose would eat during interpolation.
+    # Hash at startup because Compose would interpolate $ in a stored bcrypt hash.
     command: >
       sh -c 'export BOARD_PASSWORD_HASH=$$(caddy hash-password --plaintext "$$BOARD_PASSWORD");
         exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
