@@ -19,6 +19,8 @@
   .count { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums }
   .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block }
   #age { margin-left: auto; font-variant-numeric: tabular-nums; color: #9aa4b0 }
+  #clock { font-variant-numeric: tabular-nums; color: var(--fg);
+           padding-left: 18px; border-left: 1px solid #232a33 }
   #banner { position: absolute; inset: 44px 0 auto 0; padding: 11px 14px;
             color: #fff; font-size: 16px; font-weight: 600; text-align: center;
             z-index: 3; display: none }
@@ -26,7 +28,9 @@
                  font-weight: 400; opacity: .9 }
   body.stale #banner { display: block; background: #8a5300 }
   body.expired #banner { display: block; background: #b3140a }
-  body.expired #map { filter: grayscale(1) brightness(.65) }
+  /* The expired state is carried by the banner alone. Greying the map made the
+     last known positions hard to read, which is when a controller most needs
+     to see them. */
   #legend { position: absolute; left: 12px; bottom: 12px; z-index: 2;
             background: #0b0e12dd; border: 1px solid #232a33; border-radius: 6px;
             padding: 10px 12px; line-height: 1.9 }
@@ -36,6 +40,14 @@
   .maplibregl-popup-content b { display: block; margin-bottom: 4px }
   .maplibregl-popup-tip { border-top-color: #0b0e12 !important }
   .note { color: #9aa4b0; margin-top: 5px; font-style: italic }
+  .coords { display: flex; align-items: center; gap: 7px; margin-top: 7px;
+            font-variant-numeric: tabular-nums; letter-spacing: .2px }
+  .copy { display: flex; padding: 3px; border: 1px solid #2c343e;
+          border-radius: 4px; background: #161b22; color: #9aa4b0;
+          cursor: pointer; line-height: 0 }
+  .copy:hover { color: var(--fg); border-color: #3d4854 }
+  .copy.done { color: #6cd07a; border-color: #6cd07a }
+  .copy.failed { color: #ff8b82; border-color: #ff8b82 }
 </style>
 
 <div id="bar">
@@ -45,6 +57,7 @@
   <span class="count"><i class="dot" style="background:var(--stale)"></i><span id="c-stale">0</span> overdue</span>
   <span class="count"><i class="dot" style="background:var(--landed)"></i><span id="c-landed">0</span> landed</span>
   <span id="age">waiting for flight data…</span>
+  <span id="clock"></span>
 </div>
 <div id="banner"></div>
 <div id="map"></div>
@@ -150,14 +163,15 @@ function onMapLoad() {
   map.on("click", "dot", e => {
     const p = e.features[0].properties;
     new maplibregl.Popup({ closeButton: false })
-      .setLngLat(e.features[0].geometry.coordinates)
+      .setLngLat([p.lon, p.lat])
       .setHTML(
         `<b>Pilot ${p.pilot}</b>` +
         `${STATUS_TEXT[p.status] || p.status}<br>` +
         `take-off ${hhmm(p.takeoff)} &nbsp; landing ${hhmm(p.landing)}<br>` +
         `reported at ${hhmm(p.reported_at)}` +
         (p.note ? `<div class="note">“${escapeHtml(p.note)}”</div>` : "") +
-        `<div class="note">${p.source}</div>`)
+        coordRow(p.lat, p.lon) +
+        `<div class="note">Reported via WhatsApp channel</div>`)
       .addTo(map);
   });
   map.on("mouseenter", "dot", () => map.getCanvas().style.cursor = "pointer");
@@ -167,11 +181,87 @@ function onMapLoad() {
   render();
 }
 
+// Five decimals is roughly a metre, and lat,lon is the order the tools a
+// controller pastes into expect.
+const coordText = (lat, lon) => `${(+lat).toFixed(5)}, ${(+lon).toFixed(5)}`;
+
+const CLIPBOARD_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+  'stroke-linejoin="round" aria-hidden="true">' +
+  '<rect x="9" y="9" width="12" height="12" rx="2"></rect>' +
+  '<path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>';
+
+function coordRow(lat, lon) {
+  const text = coordText(lat, lon);
+  return `<div class="coords"><span class="coord-value">${text}</span>` +
+         `<button type="button" class="copy" data-copy="${text}" ` +
+         `title="Copy coordinates" aria-label="Copy coordinates">` +
+         `${CLIPBOARD_ICON}</button></div>`;
+}
+
+// Popups are rebuilt on every click, so listen once here rather than wiring up
+// each copy button as it appears.
+document.addEventListener("click", async ev => {
+  const btn = ev.target.closest(".copy");
+  if (!btn) return;
+  const ok = await copyText(btn.dataset.copy);
+  if (!ok) selectText(btn.parentElement.querySelector(".coord-value"));
+  btn.classList.add(ok ? "done" : "failed");
+  btn.title = ok ? "Copied" : "Could not copy - press Ctrl+C";
+  setTimeout(() => {
+    btn.classList.remove("done", "failed");
+    btn.title = "Copy coordinates";
+  }, 1600);
+});
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    // The clipboard API needs a secure context; fall back for plain http.
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;top:-1000px";
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (err2) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+}
+
+function selectText(el) {
+  if (!el) return;
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+const pad2 = v => String(v).padStart(2, "0");
+
+function nepal(d) {
+  return new Date(d.getTime() + (NEPAL_MIN + d.getTimezoneOffset()) * 60000);
+}
+
 function hhmm(iso) {
   if (!iso) return "not reported";
-  const d = new Date(iso);
-  const n = new Date(d.getTime() + (NEPAL_MIN + d.getTimezoneOffset()) * 60000);
-  return String(n.getHours()).padStart(2, "0") + ":" + String(n.getMinutes()).padStart(2, "0");
+  const n = nepal(new Date(iso));
+  return pad2(n.getHours()) + ":" + pad2(n.getMinutes());
+}
+
+// Every other time on the board is Nepal local, so this is too. The ticking
+// seconds also show at a glance that the page itself is still alive, which the
+// feed age alone cannot.
+function paintClock() {
+  const n = nepal(new Date());
+  document.getElementById("clock").textContent =
+    `${pad2(n.getHours())}:${pad2(n.getMinutes())}:${pad2(n.getSeconds())} NPT`;
 }
 const escapeHtml = s => s.replace(/[&<>"]/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -214,6 +304,10 @@ function render() {
     if (!status) continue;
     p.status = status;
     counts[status] = (counts[status] || 0) + 1;
+    // Copy the pin through properties: geometry queried back off the map has
+    // been through tiling, which moves it by metres at these zooms.
+    p.lon = f.geometry.coordinates[0];
+    p.lat = f.geometry.coordinates[1];
     p.label = `${p.pilot}\n` + (
       status === "planned" ? `starts in ${mins(p.takeoff)}` :
       status === "airborne" && p.landing ? `lands at ${hhmm(p.landing)}` :
@@ -311,6 +405,7 @@ function fitMapUnderBanner(bannerPx) {
 
 // Start this here so the warning still works when the map cannot load.
 tick();
+paintClock();
 setInterval(tick, POLL_MS);
-setInterval(() => { render(); paintAge(); }, TICK_MS);
+setInterval(() => { render(); paintAge(); paintClock(); }, TICK_MS);
 </script>
