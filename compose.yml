@@ -67,7 +67,7 @@ services:
   flights:
     image: *chatmap
     restart: unless-stopped
-    command: ["/app/flights_loop.sh"]
+    command: ["/app/entrypoint.sh"]
     healthcheck:
       test: ["CMD-SHELL", 'test -n "$$(find /out/flights.geojson -mmin -3 2>/dev/null)"']
       interval: 30s
@@ -77,7 +77,7 @@ services:
     env_file: [.env]
     volumes:
       - ./export_flights.py:/app/export_flights.py:ro
-      - ./flights_loop.sh:/app/flights_loop.sh:ro
+      - ./entrypoint.sh:/app/entrypoint.sh:ro
       - ./web:/out
     depends_on:
       chatmap-db: {condition: service_healthy}
